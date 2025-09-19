@@ -7,12 +7,17 @@ import utils as u
 Notation
 
 _h: "hat" accent, denotes estimated variable
-_t: true value of a variable (unknown to estimator)
+_g: ground truth value of a variable (unknown to estimator)
 _0: initial value of a variable
+_m: measured variable (after adding noise)
+
 dX: error of variable X, verifying X_t = X_h + dX
+
 Z: rotation vector (3,1)
 q: attitude quaternion (4,1)
 B: gyro bias (3,1)
+w: angular velocity (3,1)
+
 '''
 
 ######### 
@@ -23,6 +28,7 @@ pi = np.pi
 #########
 
 # Initialization
+t_max = 100 # total integration time [s]
 dt = 0.01 # integration timestep [s]
 sigma_startracker = 6 # isotropic accuracy of startracker for each axis [arcsec]
 sigma_v = 10**0.5 * 1e-7 # gyro angle random walk factor  [rad/s / sqrt(Hz) = rad/sqrt(s)]
@@ -45,14 +51,11 @@ B_0 = np.array([[0,0,0]]).T # start with no gyro bias
 ### Automatic initialization (not user input)
 H = np.hstack((I3, np.zeros((3,3)))) # H = [I_3 0_3x3]
 R = I3 * sigma_startracker**2 
+Q = u.Q(sigma_v, sigma_u, dt)
 
-# Discrete time noise covariance matrix (Eq. 6.93)
-Q11 = (sigma_v**2 * dt + sigma_u**2 * dt**3 / 3) * I3
-Q12 = - sigma_u**2 * dt**2 * I3 / 2
-Q22 = sigma_u**2 * dt * I3
-Q = np.block([[Q11, Q12], [Q12, Q22]])
+t = np.arange(0, t_max, dt)
 
 
-q_t = q_0
+q_g = q_0
 
 
