@@ -100,11 +100,11 @@ Notation
 State and Error Representation
 ------------------------------
 
-The nominal state consists of the estimates for the attitude quaternion and gyro bias, where :math:`(\hat{q}, \hat{\beta}) \in \mathbb{S}^3 \times \mathbb{R}^3`. However, the Kalman filter updates the error states, then injects these updates to the nominal state. The error quaternion is the relation between the ground truth quaternion, represented multiplicatevely:
+The nominal state consists of the estimates for the attitude quaternion and gyro bias, where :math:`(\hat{\mathbf{q}}, \hat{\beta}) \in \mathbb{S}^3 \times \mathbb{R}^3`. However, the Kalman filter updates the error states, then injects these updates to the nominal state. The error quaternion is the relation between the ground truth quaternion, represented multiplicatevely:
 
 .. math::
 
-   \delta q = q_t \otimes \hat{q}^{-1} = \begin{bmatrix} \boldsymbol{\delta\epsilon} \\ \delta\eta \end{bmatrix}
+   \delta \mathbf{q} = \mathbf{q}_t \otimes \hat{\mathbf{q}}^{-1} = \begin{bmatrix} \boldsymbol{\delta\epsilon} \\ \delta\eta \end{bmatrix}
 
 We use the error rotation vector :math:`\boldsymbol{\delta\theta} \in \mathbb{R}^3` in our state instead of the error quaternion:
 
@@ -116,7 +116,7 @@ For small angles,
 
 .. math::
 
-   \delta q \approx \begin{bmatrix} \frac{1}{2} \boldsymbol{\delta\theta} \\ 1 \end{bmatrix}
+   \delta \mathbf{q} \approx \begin{bmatrix} \frac{1}{2} \boldsymbol{\delta\theta} \\ 1 \end{bmatrix}
 
 A gyro measurement is modelled with a moving bias and white noise (random walk):
 
@@ -147,23 +147,28 @@ The gyro bias error is defined as:
 Quaternion math
 ---------------
 
-Throughout the documentation, we use the following quaternion multiplication convention:
+Throughout the documentation, we use the following quaternion multiplication convention. First we define the quaternion function :math:`\Xi`:
 
 .. math::
+    \Xi(\mathbf{q}) = \begin{bmatrix} q_w & -q_z & q_y \\ q_z & q_w & -q_x \\ -q_y & q_x & q_w \end{bmatrix}
 
-   q_1 \otimes q_2 = \begin{bmatrix} q_{1x} q_{2x} - q_{1y} q_{2y} - q_{1z} q_{2z} + q_{1w} q_{2w} \\ q_{1x} q_{2y} + q_{1y} q_{2x} + q_{1z} q_{2w} - q_{1w} q_{2z} \\ q_{1x} q_{2z} - q_{1y} q_{2w} + q_{1z} q_{2x} + q_{1w} q_{2y} \\ q_{1x} q_{2w} - q_{1y} q_{2z} - q_{1z} q_{2y} + q_{1w} q_{2x} \end{bmatrix}
+Then, the quaternion multiplication is defined as:
+
+.. math::
+    \mathbf{q}_1 \otimes \mathbf{q}_2 =  \begin{bmatrix} \Xi(\mathbf{q}_2) & \mathbf{q}_2 \end{bmatrix} \mathbf{q}_1
+
 
 In the code we use the function ``quat_mul`` in ``utils.py`` to perform this multiplication. The quaternion inverse is defined as:
 
 .. math::
 
-   q^{-1} = \begin{bmatrix} -q_x \\ -q_y \\ -q_z \\ q_w \end{bmatrix}
+   \mathbf{q}^{-1} = \begin{bmatrix} -q_x \\ -q_y \\ -q_z \\ q_w \end{bmatrix}
 
 
 Initialization
 --------------
 
-The user provides an initial gyro bias :math:`\boldsymbol{\beta_0}` and initial attitude quaternion :math:`\boldsymbol{q_0}`. Additionally, the user provides initial values for the Kalman filter estimator: the attitude error covariance :math:`P_q` and the gyro bias error covariance :math:`P_b`; the initial estimate of the attitude error :math:`\boldsymbol{\delta\theta_0}` and the initial estimate of the gyro bias error :math:`\boldsymbol{\delta\beta_0}`.
+The user provides an initial gyro bias :math:`\boldsymbol{\beta_0}` and initial attitude quaternion :math:`\boldsymbol{\mathbf{q}_0}`. Additionally, the user provides initial values for the Kalman filter estimator: the attitude error covariance :math:`P_q` and the gyro bias error covariance :math:`P_b`; the initial estimate of the attitude error :math:`\boldsymbol{\delta\theta_0}` and the initial estimate of the gyro bias error :math:`\boldsymbol{\delta\beta_0}`.
 
 
 Ground truth update
@@ -175,7 +180,7 @@ Define :math:`\varphi = \|\boldsymbol{\omega}_t\| \Delta t`. The quaternion incr
 
 .. math::
 
-   \Delta q = \begin{bmatrix} \mathbf{e} \sin(\frac{\varphi}{2}) \\ \cos(\frac{\varphi}{2}) \end{bmatrix}
+   \Delta \mathbf{q} = \begin{bmatrix} \mathbf{e} \sin(\frac{\varphi}{2}) \\ \cos(\frac{\varphi}{2}) \end{bmatrix}
 
 .. math::
 
@@ -184,7 +189,7 @@ Define :math:`\varphi = \|\boldsymbol{\omega}_t\| \Delta t`. The quaternion incr
 This assumes that the angular velocity is constant throughout this timestep. The ground truth update is:
 
 .. math::
-   q \leftarrow \Delta q \otimes q
+   \mathbf{q} \leftarrow \Delta \mathbf{q} \otimes \mathbf{q}
    
 
 
@@ -298,30 +303,25 @@ Finally, covaraince is propagated as:
 Star tracker measurement synthesis
 ----------------------------------
 
-At star tracker measurement events, a quaternion measurement :math:`q_m` of attitude is available. This is synthesized from the ground truth quaternion :math:`q_t` with white noise. This is done by synthesizing a R3 vector with white noise and then converting it to a quaternion.
+At star tracker measurement events, a quaternion measurement :math:`\mathbf{q}_m` of attitude is available. This is synthesized from the ground truth quaternion :math:`q_t` with white noise. This is done by synthesizing a R3 vector with white noise and then converting it to a quaternion.
 
 .. math::
     \boldsymbol{\theta}_n \sim \mathcal{N}(0, \sigma_{st}^2 I_3)
 
 .. math::
-    q_m = q_t \otimes \mathbf{q}_n \approx q_t + \frac{1}{2} \Xi(q_t) \boldsymbol{\theta}_n
+    \mathbf{q}_m = \mathbf{q}_t \otimes \mathbf{q}_n \approx \mathbf{q}_t + \frac{1}{2} \Xi(\mathbf{q}_t) \boldsymbol{\theta}_n
 
 
-Here, we used small angle approximation (as the startracker measurement error is in the order of arcseconds), and we used the quaternion function :math:`\Xi` defined as:
-
-.. math::
-    \Xi(q) = \begin{bmatrix} q_w & -q_z & q_y \\ q_z & q_w & -q_x \\ -q_y & q_x & q_w \end{bmatrix}
-
-Now, the estimated error quaternion for this measurement is:
+Here, we used small angle approximation (as the startracker measurement error is in the order of arcseconds). Now, the estimated error quaternion for this measurement is:
 
 .. math::
-    \delta q_m = q_m \otimes \hat{q}^{-1} 
+    \delta \mathbf{q}_m = \mathbf{q}_m \otimes \hat{\mathbf{q}}^{-1} 
 
 We then convert this to a rotation vector, explained in the first section. 
 
 .. math::
 
-    \boldsymbol{\delta q_m} \mapsto \boldsymbol{\delta\theta}_m
+    \boldsymbol{\delta \mathbf{q}_m} \mapsto \boldsymbol{\delta\theta}_m
 
 The observation model matrix is:
 
@@ -359,19 +359,19 @@ Split :math:`\boldsymbol{\delta \hat x} = \begin{bmatrix} \hat{\boldsymbol{\delt
 
 .. math::
 
-   \hat{\boldsymbol{\beta}} \leftarrow \hat{\boldsymbol{\beta}} + \widehat{\delta\boldsymbol{\beta}}
+   \hat{\boldsymbol{\beta}} \leftarrow \hat{\boldsymbol{\beta}} + \hat{\delta\boldsymbol{\beta}}
 
 Map the estimated error vector to a quaternion:
 
 .. math::
 
-   \hat{\boldsymbol{\delta \theta}} \mapsto \hat{\boldsymbol{\delta q}}
+   \hat{\boldsymbol{\delta \theta}} \mapsto \hat{\boldsymbol{\delta \mathbf{q}}}
 
 and update the attitude multiplicatively:
 
 .. math::
 
-   \hat{q} \leftarrow \hat{\boldsymbol{\delta q}} \otimes \hat{q}
+   \hat{\mathbf{q}} \leftarrow \hat{\boldsymbol{\delta \mathbf{q}}} \otimes \hat{\mathbf{q}}
 
 
 Update the covariance (the Joseph form is used by default; a simple form is also available):
