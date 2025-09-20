@@ -1,6 +1,3 @@
-.. include:: ../README.md
-   :parser: myst_parser.sphinx_
-
 Welcome to Error State MEKF's documentation!
 =============================================
 
