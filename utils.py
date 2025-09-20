@@ -3,9 +3,8 @@ from numba import njit
 
 I3 = np.eye(3)
 
-@njit
 def Phi(dt, w_h, simple=False): # returns state transition matrix (discrete-time), i.e. Phi = Exp(F dt)
-    e = np.norm(w_h)
+    e = np.linalg.norm(w_h)
     p = e * dt
     a = skew(w_h)
     sp = np.sin(p)
@@ -26,12 +25,11 @@ def Phi(dt, w_h, simple=False): # returns state transition matrix (discrete-time
 
     return Phi
 
-@njit
 def skew(a): # returns skew-symmetric matrix of column vector x
     a = a.flatten()
-    a_x = np.array([[0, -a[3], a[2]],
-                    [a[3], 0, -a[1]],
-                    [-a[2], a[1], a[0]] ])
+    a_x = np.array([[0, -a[2], a[1]],
+                    [a[2], 0, -a[0]],
+                    [-a[1], a[0], 0] ])
     return a_x
 
 
@@ -42,7 +40,6 @@ def Q(sigma_v, sigma_u, dt): # Discrete time noise covariance matrix (Eq. 6.93)
     Q = np.block([[Q11, Q12], [Q12, Q22]])
     return Q
 
-@njit
 def K(P, H, R): # Kalman gain
     # B = P H'
     # S = H B + R
@@ -57,17 +54,15 @@ def K(P, H, R): # Kalman gain
     K_B = K[3:, :] # B part of the gain
     return K, K_Z, K_B
 
-@njit
 def P_meas(K, H, P, R, Joseph = True): # returns the update covariance matrix, after measurement
     KH = K @ H
-    IKH = I3 - KH
+    IKH = np.eye(6) - KH
 
     if Joseph: 
         return IKH @ P @ IKH.T + K @ R @ K.T
     else:
         return IKH @ P
 
-@njit 
 def P_prop(P, Phi, Q): # returns the update of the covariance matrix, after propagation
     return Phi @ P @ Phi.T + Q
 
@@ -79,23 +74,40 @@ def measurement_indices(t_max, dt, measurement_freq): # returns the indices of t
     indices = indices[indices < n_steps]  # Filter out indices beyond array bounds
     return set(indices)  
 
-@njit
 def quat_mul(q1, q2):     # Quaternion product q1 ⊗ q2
-    x1,y1,z1,w1 = q1.flatten()
-    x2,y2,z2,w2 = q2.flatten()
+    x1,y1,z1,w1 = q1
+    x2,y2,z2,w2 = q2
     x = w1*x2 + x1*w2 + y1*z2 - z1*y2
     y = w1*y2 - x1*z2 + y1*w2 + z1*x2
     z = w1*z2 + x1*y2 - y1*x2 + z1*w2
     w = w1*w2 - x1*x2 - y1*y2 - z1*z2
-    return np.array([[x,y,z,w]]).T
+    return np.array([x,y,z,w])
 
-@njit
 def quat_propagate(q, w, dt): 
     # propagates initial quaternion q thru angular vel w and delta time dt
     # done with q <-- dq ⊗ q
     dz = w*dt
     p = np.linalg.norm(dz)
     e = dz / p
-    dq = np.hstack(e * np.sin(p/2), np.cos(p/2))
+    dq = np.hstack((e * np.sin(p/2), np.cos(p/2)))
     q = quat_mul(dq, q)
     return q
+
+
+def Xi(q):
+    return np.array([ [q[3], -q[2], q[1]],
+                      [q[2], q[3], -q[0]],
+                      [-q[1], q[0], q[3]],
+                      [-q[0], -q[1], -q[2]]  
+                         ])
+
+
+def startracker_meas(q_t, sigma, rng, n):
+    Z_n = rng.normal(0, sigma, n).reshape(-1,1) # noise on each axis
+    q_m = q_t.reshape(-1,1) + 0.5 * Xi(q_t) @ Z_n # small angle approximation of q_m = q_n ⊗ q_t
+    q_m = q_m.flatten()
+    dZ_m = 2 * q_m[:3] / q_m[3]
+    return dZ_m
+
+def quat_inv(q):
+    return np.array([-q[0], -q[1], -q[2], q[3]])
