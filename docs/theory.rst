@@ -3,6 +3,8 @@ Theory
 
 This section presents the error-state multiplicative EKF implemented on the code.
 
+Please note that the documentation currently is bare bones, and the notation used might not be very rigorous; I will be adding more details and improving the documentation as the project progresses. 
+
 
 Notation
 --------
@@ -102,13 +104,13 @@ The nominal state consists of the estimates for the attitude quaternion and gyro
 
 .. math::
 
-   \delta q = q_t \otimes \hat{q}^{-1} = \begin{bmatrix} \boldsymbol{\epsilon} \\ \eta \end{bmatrix}
+   \delta q = q_t \otimes \hat{q}^{-1} = \begin{bmatrix} \boldsymbol{\delta\epsilon} \\ \delta\eta \end{bmatrix}
 
 We use the error rotation vector :math:`\boldsymbol{\delta\theta} \in \mathbb{R}^3` in our state instead of the error quaternion:
 
 .. math::
 
-   \boldsymbol{\delta\theta} = 2 \arctan2 \left( \|\boldsymbol{\epsilon}\|, \eta \right) \frac{\boldsymbol{\epsilon}}{\|\boldsymbol{\epsilon}\|}
+   \boldsymbol{\delta\theta} = 2 \arctan2 \left( \|\boldsymbol{\delta\epsilon}\|, \delta\eta \right) \frac{\boldsymbol{\delta\epsilon}}{\|\boldsymbol{\delta\epsilon}\|}
 
 For small angles,
 
@@ -116,7 +118,93 @@ For small angles,
 
    \delta q \approx \begin{bmatrix} \frac{1}{2} \boldsymbol{\delta\theta} \\ 1 \end{bmatrix}
 
-A true gyro measurement is modelled as:
+A gyro measurement is modelled with a moving bias and white noise (random walk):
+
+.. math::
+
+   \boldsymbol{\omega}_m(t) = \boldsymbol{\omega}_t(t) + \boldsymbol{\beta}_t(t) + \mathbf{v}(t)
+
+.. math::
+
+   \mathbf{v}(t) \sim \mathcal{N}\!\left(0, \sigma_v^2 I_3 \right)
+
+The bias grows as a Weiner process, at a level related to the rate random walk coefficient:
+
+.. math::
+
+   \boldsymbol{\dot{\beta_t}}(t) = \boldsymbol{u}(t)
+
+.. math::
+   \boldsymbol{u}(t) \sim \mathcal{N}\!\left(0, \sigma_u^2 I_3 \right)
+
+The gyro bias error is defined as:
+
+.. math::
+
+    \boldsymbol{\delta \beta} = \boldsymbol{\beta}_t - \boldsymbol{\hat{\beta}}
+
+
+Quaternion math
+---------------
+
+Throughout the documentation, we use the following quaternion multiplication convention:
+
+.. math::
+
+   q_1 \otimes q_2 = \begin{bmatrix} q_{1x} q_{2x} - q_{1y} q_{2y} - q_{1z} q_{2z} + q_{1w} q_{2w} \\ q_{1x} q_{2y} + q_{1y} q_{2x} + q_{1z} q_{2w} - q_{1w} q_{2z} \\ q_{1x} q_{2z} - q_{1y} q_{2w} + q_{1z} q_{2x} + q_{1w} q_{2y} \\ q_{1x} q_{2w} - q_{1y} q_{2z} - q_{1z} q_{2y} + q_{1w} q_{2x} \end{bmatrix}
+
+In the code we use the function ``quat_mul`` in ``utils.py`` to perform this multiplication. The quaternion inverse is defined as:
+
+.. math::
+
+   q^{-1} = \begin{bmatrix} -q_x \\ -q_y \\ -q_z \\ q_w \end{bmatrix}
+
+
+Initialization
+--------------
+
+The user provides an initial gyro bias :math:`\boldsymbol{\beta_0}` and initial attitude quaternion :math:`\boldsymbol{q_0}`. Additionally, the user provides initial values for the Kalman filter estimator: the attitude error covariance :math:`P_q` and the gyro bias error covariance :math:`P_b`; the initial estimate of the attitude error :math:`\boldsymbol{\delta\theta_0}` and the initial estimate of the gyro bias error :math:`\boldsymbol{\delta\beta_0}`.
+
+
+Ground truth update
+------------------------
+
+The user inputs a desired ground truth angular velocity :math:`\boldsymbol{\omega_t}(t)` with the function ``w_t_fun`` in ``efk.py``. The user also inputs an initial gyro bias :math:`\boldsymbol{\beta_0}`. The ground truth quaternion and gyro bias are propagated at a period of :math:`\Delta t`.
+
+Define :math:`\varphi = \|\boldsymbol{\omega}_t\| \Delta t`. The quaternion increment associated with the rotation :math:`\boldsymbol{\omega}_t \Delta t` is:
+
+.. math::
+    :label: q_prop_1
+   \Delta q = \begin{bmatrix} \mathbf{e} \sin(\frac{\varphi}{2}) \\ \cos(\frac{\varphi}{2}) \end{bmatrix}
+
+.. math::
+:label: q_prop_2
+   \mathbf{e} = \frac{\boldsymbol{\omega}_t}{ \|\boldsymbol{\omega}_t\| }
+
+This assumes that the angular velocity is constant throughout this timestep. The ground truth update is:
+
+.. math::
+:label: q_prop_3
+   q \leftarrow \Delta q \otimes q
+
+
+In a discrete step, the bias is updated as:
+
+.. math::
+
+    \boldsymbol{\beta_t} \leftarrow \boldsymbol{\beta_t} + \boldsymbol{u_\Delta}
+
+   \mathbf{u_\Delta} \sim \mathcal{N}\!\left(0, \sigma_u^2 \Delta t I_3 \right)
+
+
+
+Estimate propagation (gyro measurements)
+---------------------------------------
+
+Gyros are used for dynamic model replacement, i.e. I do not integrate the Euler rigid body equations. Instead, I use the gyro measurements to propagate the estimate. 
+
+At gyro sampling instants separated by :math:`\Delta t_g`, the gyro provides a measurement which is synthesized from the ground truth angular velocity :math:`\boldsymbol{\omega}_t` and the gyro bias :math:`\boldsymbol{\beta}_t`.
+
 
 .. math::
 
@@ -124,97 +212,16 @@ A true gyro measurement is modelled as:
 
 .. math::
 
-   \mathbf{v}_Delta \sim \mathcal{N}\!\left(0, \frac{\sigma_v^2}{\Delta t_g} I_3 \right)
+   \mathbf{v}_\Delta \sim \mathcal{N}\!\left(0, \frac{\sigma_v^2}{\Delta t_g} I_3 \right)
 
-Here, :math:`\Delta t_g` is the gyro sampling period. The gyro bias error is defined as:
-
-.. math::
-
-    \boldsymbol{\delta \beta} = \boldsymbol{\beta}_t - \boldsymbol{\hat{\beta}}
-
-
-
-Ground truth propagation
-------------------------
-
-The user inputs a desired ground truth angular velocity :math:`\omega_t(t)` with the function ``w_t_fun`` in ``efk.py``. The ground truth quaternion is then propagated at a period of :math:`\Delta t`.
-
-Define :math:`\varphi = \|\boldsymbol{\omega}_t\| \Delta t`. The quaternion increment associated with :math:`\boldsymbol{\omega}_h \Delta t_g` is:
+The estimate of the angular velocity is:
 
 .. math::
 
-   \Delta q = \begin{bmatrix} \mathbf{e} \sin(\frac{\varphi}{2}) \\ \cos(\frac{\varphi}{2}) \end{bmatrix}
-
-.. math::
-
-   \mathbf{e} = \frac{\boldsymbol{\omega}_h}{ \|\boldsymbol{\omega}_h\| }
-
-This assumes that the angular velocity is constant throughout this timestep. The ground truth update is then:
-
-.. math::
-
-   \hat{q} \leftarrow \Delta q \otimes \hat{q}
-
-.. math::
-
-   \hat{q} \leftarrow \frac{\hat{q}}{\|\hat{q}\|}
+   \boldsymbol{\hat{\omega}} = \boldsymbol{\omega}_m - \hat{\boldsymbol{\beta}}
 
 
-The bias grows as a Weiner process, at a level related to the rate random walk coefficient:
-
-.. math::
-
-   \boldsymbol{\dot{\beta_t}}(t) = \boldsymbol{u}
-
-In a discrete step, this is done in the code with:
-
-.. math::
-
-    \boldsymbol{\beta_t} \leftarrow \boldsymbol{\beta_t} + \boldsymbol{u_Delta}
-
-   \mathbf{u_\Delta} \sim \mathcal{N}\!\left(0, \sigma_u^2 \Delta t I_3 \right)
-
-
-
-
-Discrete-Time Propagation (Gyro Events)
----------------------------------------
-
-At gyro sampling instants separated by :math:`\Delta t_g`, the gyro provides
-
-.. math::
-
-   \boldsymbol{\omega}_m = \boldsymbol{\omega}_t + \boldsymbol{\beta}_t + \mathbf{v}_k
-
-.. math::
-
-   \mathbf{v}_k \sim \mathcal{N}\!\left(0, \frac{\sigma_v^2}{\Delta t_g} I_3 \right)
-
-The propagation uses the bias-compensated rate
-
-.. math::
-
-   \boldsymbol{\omega}_h = \boldsymbol{\omega}_m - \hat{\boldsymbol{\beta}}
-
-Define :math:`\varphi = \|\boldsymbol{\omega}_h\| \Delta t_g` and :math:`[\boldsymbol{\omega}_h]_\times` such that :math:`[\boldsymbol{\omega}_h]_\times \mathbf{x} = \boldsymbol{\omega}_h \times \mathbf{x}` for :math:`\mathbf{x} \in \mathbb{R}^3`. The quaternion increment associated with :math:`\boldsymbol{\omega}_h \Delta t_g` is
-
-.. math::
-
-   d q_g = \begin{bmatrix} \mathbf{e} \sin(\frac{\varphi}{2}) \\ \cos(\frac{\varphi}{2}) \end{bmatrix}
-
-.. math::
-
-   \mathbf{e} = \begin{cases} \boldsymbol{\omega}_h / \|\boldsymbol{\omega}_h\| & \|\boldsymbol{\omega}_h\| > 0 \\ 0 & \text{otherwise} \end{cases}
-
-The nominal attitude update is
-
-.. math::
-
-   \hat{q} \leftarrow d q_g \otimes \hat{q}
-
-.. math::
-
-   \hat{q} \leftarrow \frac{\hat{q}}{\|\hat{q}\|}
+We propagate the estimated attitude quaternion the same way as the ground truth (see :eq:`q_prop_1`, :eq:`q_prop_2`, :eq:`q_prop_3`).
 
 The bias is constant in propagation:
 
@@ -222,35 +229,36 @@ The bias is constant in propagation:
 
    \hat{\boldsymbol{\beta}} \leftarrow \hat{\boldsymbol{\beta}}
 
+The covariance propagation in a gyro measurement step is discussed in the next two sections.
 
 Linearized Error-State Propagation
 ----------------------------------
 
-Let :math:`\boldsymbol{\delta x} = \begin{bmatrix} \boldsymbol{\delta\theta} \\ \delta\boldsymbol{\beta} \end{bmatrix} \in \mathbb{R}^6`. For a step :math:`\Delta t_g` with input :math:`\boldsymbol{\omega}_h`, the first-order discrete transition is
+Let :math:`\boldsymbol{\delta x} = \begin{bmatrix} \boldsymbol{\delta\theta} \\ \delta\boldsymbol{\beta} \end{bmatrix} \in \mathbb{R}^6`. For a step :math:`\Delta t_g` with input :math:`\boldsymbol{\hat{\omega}}`, the first-order discrete transition is:
 
 .. math::
 
-   \boldsymbol{\delta x}_{k+1} = \Phi_k \boldsymbol{\delta x}_k + \mathbf{w}_k
+   \boldsymbol{\delta x}  \leftarrow \Phi \boldsymbol{\delta x}
 
 .. math::
 
-   \Phi_k = \begin{bmatrix} \Phi_{11} & \Phi_{12} \\ 0 & I_3 \end{bmatrix}
+   \Phi = \begin{bmatrix} \Phi_{11} & \Phi_{12} \\ 0 & I_3 \end{bmatrix}
 
-With :math:`\mathbf{a} = [\boldsymbol{\omega}_h]_\times`, :math:`\varphi = \|\boldsymbol{\omega}_h\| \Delta t_g`, :math:`s = \sin \varphi`, :math:`c = \cos \varphi`,
-
-.. math::
-
-   \Phi_{11} = I_3 - \frac{\mathbf{a}}{\|\boldsymbol{\omega}_h\|} s + \frac{\mathbf{a}^2}{\|\boldsymbol{\omega}_h\|^2} (1 - c)
+With :math:`\varphi = \|\boldsymbol{\hat{\omega}}\| \Delta t_g`, :math:`s = \sin \varphi`, :math:`c = \cos \varphi`,
 
 .. math::
 
-   \Phi_{12} = -I_3 \Delta t_g - \frac{\mathbf{a}^2}{\|\boldsymbol{\omega}_h\|^3} (\varphi - s) + \frac{\mathbf{a}}{\|\boldsymbol{\omega}_h\|^2} (1 - c)
-
-For :math:`\|\boldsymbol{\omega}_h\| \Delta t_g \ll 1`, the approximation
+   \Phi_{11} = I_3 - \frac{\boldsymbol{\hat{\omega}}_\times}{\|\boldsymbol{\hat{\omega}}\|} s + \frac{\boldsymbol{\hat{\omega}}_\times^2}{\|\boldsymbol{\hat{\omega}}\|^2} (1 - c)
 
 .. math::
 
-   \Phi_{11} \approx I_3 - \mathbf{a} \Delta t_g
+   \Phi_{12} = -I_3 \Delta t_g - \frac{\boldsymbol{\hat{\omega}}_\times^2}{\|\boldsymbol{\hat{\omega}}\|^3} (\varphi - s) + \frac{\boldsymbol{\hat{\omega}}_\times}{\|\boldsymbol{\hat{\omega}}\|^2} (1 - c)
+
+For :math:`\|\boldsymbol{\hat{\omega}}\| \Delta t_g \ll 1`, the approximation
+
+.. math::
+
+   \Phi_{11} \approx I_3 - \boldsymbol{\hat{\omega}}_\times \Delta t_g
 
 .. math::
 
@@ -266,7 +274,7 @@ With gyro angle random walk density :math:`\sigma_v^2` and bias random walk dens
 
 .. math::
 
-   Q_k = \begin{bmatrix} Q_{11} & Q_{12} \\ Q_{12} & Q_{22} \end{bmatrix}
+   Q = \begin{bmatrix} Q_{11} & Q_{12} \\ Q_{12} & Q_{22} \end{bmatrix}
 
 .. math::
 
@@ -284,7 +292,7 @@ Covariance propagation:
 
 .. math::
 
-   P \leftarrow \Phi_k P \Phi_k^T + Q_k
+   P \leftarrow \Phi P \Phi^T + Q
 
 
 Measurement Model (Star Tracker Events)
