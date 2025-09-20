@@ -3,8 +3,11 @@ from numba import njit
 
 I3 = np.eye(3)
 
-def Phi(dt, w_h, simple=False): # returns state transition matrix (discrete-time), i.e. Phi = Exp(F dt)
+def Phi(dt, w_h, simple=False, min_e=1e-7): # returns state transition matrix (discrete-time), i.e. Phi = Exp(F dt)
     e = np.linalg.norm(w_h)
+    if e < min_e: # to avoid numerical instabilities as we divide by e
+        simple=True
+
     p = e * dt
     a = skew(w_h)
     sp = np.sin(p)
@@ -14,8 +17,8 @@ def Phi(dt, w_h, simple=False): # returns state transition matrix (discrete-time
         Phi11 = I3 - a*dt
         Phi12 = -I3 * dt
     else:
-        Phi11 = I3 - a/e * sp + a**2 / e**2 * (1-cp)
-        Phi12 = -I3 * dt - a**2 / e**3 * (p - sp) + a/e**2 * (1 - cp)
+        Phi11 = I3 - a/e * sp + a@a / e**2 * (1-cp)
+        Phi12 = -I3 * dt - a@a / e**3 * (p - sp) + a/e**2 * (1 - cp)
 
     Phi21 = np.zeros((3,3))
     Phi22 = np.eye(3)
@@ -83,15 +86,18 @@ def quat_mul(q1, q2):     # Quaternion product q1 ⊗ q2
     w = w1*w2 - x1*x2 - y1*y2 - z1*z2
     return np.array([x,y,z,w])
 
-def quat_propagate(q, w, dt): 
+def quat_propagate(q, w, dt, p_min = 1e-7): 
     # propagates initial quaternion q thru angular vel w and delta time dt
     # done with q <-- dq ⊗ q
     dz = w*dt
     p = np.linalg.norm(dz)
-    e = dz / p
-    dq = np.hstack((e * np.sin(p/2), np.cos(p/2)))
-    q = quat_mul(dq, q)
-    return q
+    if p < p_min: # return the same quaternion to avoid numerical instabilities
+        return q
+    else:
+        e = dz / p
+        dq = np.hstack((e * np.sin(p/2), np.cos(p/2)))
+        q = quat_mul(dq, q)
+        return q
 
 
 def Xi(q):
@@ -102,11 +108,12 @@ def Xi(q):
                          ])
 
 
-def startracker_meas(q_t, sigma, rng, n):
+def startracker_meas(q_t, q_h, sigma, rng, n):
     Z_n = rng.normal(0, sigma, n).reshape(-1,1) # noise on each axis
     q_m = q_t.reshape(-1,1) + 0.5 * Xi(q_t) @ Z_n # small angle approximation of q_m = q_n ⊗ q_t
     q_m = q_m.flatten()
-    dZ_m = 2 * q_m[:3] / q_m[3]
+    dq_m = quat_mul(q_m, quat_inv(q_h))
+    dZ_m = 2 * dq_m[:3] / dq_m[3]
     return dZ_m
 
 def quat_inv(q):

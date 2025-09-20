@@ -96,43 +96,65 @@ B_h = B_h_0
 q_h = q_h_0
 q_d = u.quat_mul(q_t, u.quat_inv(q_h))
 Z_d = 2 * q_d[:3] / q_d[3]
-w_t = w_t_l[:,0]
 P = np.block([[Pq, O3],[O3, Pb]])
 
 
-for idx in range(1, timesteps):
-    # propagate ground truth of quaternion and bias
-    q_t = u.quat_propagate(q_t, w_t, dt)   
-    B_t = B_t + rng.normal(0, sigma_v*dt**0.5, n) 
+"""
+Iterate over the full truth time grid and log only at measurement events.
+Use a separate log index k (0..timesteps-1) so log arrays match event count.
+"""
+k = 0
 
-    if idx in idx_gyro: # propagate estimate of angular velocity and cov matrix
-        w_m = w_t + B_t + rng.normal(0, sigma_u, n) # angular velocity true measurement
-        w_h = w_m - B_h # angular velocity estimate
-        Phi = u.Phi(dt, w_h) # state transition matrix
-        P = Phi @ P @ P.T + Q
+# Optionally log initial state if an event occurs at t=0
+if 0 in idx_all and k < timesteps:
+    s = np.sqrt(np.diag(P))
+    s_l[:,k] = s
+    t_l[k] = times[0]
+    q_h_l[:,k] = q_h
+    q_t_l[:,k] = q_t
+    Z_d_l[:,k] = Z_d
+    B_h_l[:,k] = B_h.flatten()
+    B_t_l[:,k] = B_t
+    k += 1
 
-    if idx in idx_star: # update estimate, propagate covariance, inject to global state
-        dZ_m = u.startracker_meas(q_t, sigma_startracker, rng, n) # obtain startracker measurement in form of a error vector
-        K, K_Z, K_B = u.K(P, H, R) # calculate Kalman gain
-        P = u.P_meas(K, H, P, R, Joseph) # propagate covariance
-        dB_h = K_Z @ dZ_m # obtain estimate of bias error
-        dZ_h = K_Z @ dZ_m # obtain estiamte of error vector
-        B_h = B_h + dB_h # inject estimate of bias error into estimate of bias
-        q_h = q_h.reshape(-1,1) + 0.5 * u.Xi(q_h) @ dB_h.reshape(-1,1) # inject estimate of error vector into estimate of atttitude quaternion
-        q_h = q_h / np.linalg.norm(q_h) # second step of injection: normalization
+for i in range(1, len(times)):
+    # propagate ground truth of quaternion and bias to next time step
+    w_t = w_t_l[:, i-1]
+    q_t = u.quat_propagate(q_t, w_t, dt)
+    B_t = B_t + rng.normal(0, sigma_u*dt**0.5, n)
+
+    # propagate estimate on gyro event
+    if i in idx_gyro:
+        w_m = w_t + B_t + rng.normal(0, sigma_v, n)
+        w_h = w_m - B_h
+        Phi = u.Phi(dt, w_h)
+        P = Phi @ P @ Phi.T + Q
+
+    # update on star tracker event
+    if i in idx_star:
+        dZ_m = u.startracker_meas(q_t, q_h, sigma_startracker*arcsec_to_rad, rng, n)
+        K, K_Z, K_B = u.K(P, H, R)
+        P = u.P_meas(K, H, P, R, Joseph)
+        dB_h = K_B @ dZ_m
+        dZ_h = K_Z @ dZ_m
+        B_h = B_h + dB_h
+        q_h = q_h.reshape(-1,1) + 0.5 * u.Xi(q_h) @ dZ_h.reshape(-1,1)
+        q_h = q_h / np.linalg.norm(q_h)
         q_h = q_h.flatten()
         q_d = u.quat_mul(q_t, u.quat_inv(q_h))
         Z_d = 2 * q_d[:3] / q_d[3]
 
-    if idx in idx_all: # log measurement
-        s = np.sqrt( np.diag(P) ) # obtain std of each component 
-        s_l[:,idx] = s 
-        t_l[idx] = times[idx]
-        q_h_l[:,idx] = q_h
-        q_t_l[:,idx] = q_t
-        Z_d_l[:,idx] = Z_d
-        B_h_l[:,idx] = B_h.flatten()
-        B_t_l[:,idx] = B_t
+    # log at measurement events
+    if i in idx_all and k < timesteps:
+        s = np.sqrt(np.diag(P))
+        s_l[:,k] = s
+        t_l[k] = times[i]
+        q_h_l[:,k] = q_h
+        q_t_l[:,k] = q_t
+        Z_d_l[:,k] = Z_d
+        B_h_l[:,k] = B_h.flatten()
+        B_t_l[:,k] = B_t
+        k += 1
 
 
 ## Calculate errors
