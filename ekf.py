@@ -39,18 +39,18 @@ dt = 0.1 # integration timestep, for ground truth computing [s]
 sigma_startracker = 6 # isotropic accuracy of startracker for each axis [arcsec]
 sigma_v = 10**0.5 * 1e-7 # gyro angle random walk factor  [rad/s / sqrt(Hz) = rad/sqrt(s)]
 sigma_u = 10**0.5 * 1e-10 # rate random walk coefficienct  [rad / s^(3/2)]
-freq_startracker = 2 # frequency of startracker measurements [Hz]
-freq_gyro = 100 # frequency of gyro measurements [Hz]
+freq_startracker = 10 # frequency of startracker measurements [Hz]
+freq_gyro = 2 # frequency of gyro measurements [Hz]
 
 rng_seed = 1
 
 Joseph = True # use Joseph formula to update the covariance matrix after startracker measurement. False = use simple form (perhaps more numerically unstable)
 
 # Define initial values for estimates
-q_h_0 = np.array([0,0,0,1])
+q_h_0 = np.array([1,0,0,1]) / 2**0.5
 B_h_0 =  np.array([0,0,0]) 
 Pq = (6 * arcsec_to_rad)**2 * I3 # initial attitude error vector covariance [rad^2]
-Pb = (0.2 * arcsec_to_rad)**2 * I3 # initial gyro bias error covariance [(rad/2)^2]
+Pb = (0.2 * degh_to_rads)**2 * I3 # initial gyro bias error covariance [(rad/s)^2]
 
 
 # Ground truth initial values
@@ -59,9 +59,9 @@ q_t_0 = np.array([1,0,0,1]) / 2**0.5 # initial attitude
 
 # Define true angular velocity
 def w_t_fun(t):
-    w1 = 0.1*np.sin(0.01*t)
-    w2 = 0.1*np.sin(0.0085*t)
-    w3 = 0.001*np.cos(0.0085*t)
+    w1 = 0.1*np.sin(0.01*t) * pi/180
+    w2 = 0.1*np.sin(0.0085*t) * pi/180
+    w3 = 0.1*np.cos(0.0085*t) * pi/180
     return np.vstack((w1, w2, w3))
 
 ### Automatic initialization (not user input)
@@ -95,7 +95,7 @@ B_t = B_t_0
 B_h = B_h_0
 q_h = q_h_0
 q_d = u.quat_mul(q_t, u.quat_inv(q_h))
-Z_d = 2 * q_d[:3] / q_d[3]
+Z_d = u.quat_to_rotvec(q_d)
 P = np.block([[Pq, O3],[O3, Pb]])
 
 
@@ -117,6 +117,7 @@ if 0 in idx_all and k < timesteps:
     B_t_l[:,k] = B_t
     k += 1
 
+last_gyro_i = 0
 for i in range(1, len(times)):
     # propagate ground truth of quaternion and bias to next time step
     w_t = w_t_l[:, i-1]
@@ -125,10 +126,19 @@ for i in range(1, len(times)):
 
     # propagate estimate on gyro event
     if i in idx_gyro:
-        w_m = w_t + B_t + rng.normal(0, sigma_v, n)
+        # elapsed time since last gyro event
+        dt_g = times[i] - times[last_gyro_i]
+        if dt_g <= 0:
+            dt_g = dt
+        # use instantaneous true rate at event time for simulated measurement
+        w_t_meas = w_t_l[:, i] if i < w_t_l.shape[1] else w_t_l[:, -1]
+        w_m = w_t_meas + B_t + rng.normal(0, sigma_v/np.sqrt(dt_g), n)
         w_h = w_m - B_h
-        Phi = u.Phi(dt, w_h)
-        P = Phi @ P @ Phi.T + Q
+        Phi = u.Phi(dt_g, w_h)
+        Qk = u.Q(sigma_v, sigma_u, dt_g)
+        P = Phi @ P @ Phi.T + Qk
+        q_h = u.quat_propagate(q_h, w_h, dt_g)   # propagate estimated attitude with gyro measurement
+        last_gyro_i = i
 
     # update on star tracker event
     if i in idx_star:
@@ -138,11 +148,17 @@ for i in range(1, len(times)):
         dB_h = K_B @ dZ_m
         dZ_h = K_Z @ dZ_m
         B_h = B_h + dB_h
-        q_h = q_h.reshape(-1,1) + 0.5 * u.Xi(q_h) @ dZ_h.reshape(-1,1)
+        # Inject estimated attitude error (rotation vector) via exact quaternion mapping
+        theta = np.linalg.norm(dZ_h)
+        if theta > 0:
+            axis = dZ_h / theta
+            dq_err = np.hstack((axis * np.sin(0.5*theta), np.cos(0.5*theta)))
+        else:
+            dq_err = np.array([0.0, 0.0, 0.0, 1.0])
+        q_h = u.quat_mul(dq_err, q_h)
         q_h = q_h / np.linalg.norm(q_h)
-        q_h = q_h.flatten()
         q_d = u.quat_mul(q_t, u.quat_inv(q_h))
-        Z_d = 2 * q_d[:3] / q_d[3]
+        Z_d = u.quat_to_rotvec(q_d)
 
     # log at measurement events
     if i in idx_all and k < timesteps:

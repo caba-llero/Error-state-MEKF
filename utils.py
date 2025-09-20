@@ -3,7 +3,7 @@ from numba import njit
 
 I3 = np.eye(3)
 
-def Phi(dt, w_h, simple=False, min_e=1e-7): # returns state transition matrix (discrete-time), i.e. Phi = Exp(F dt)
+def Phi(dt, w_h, simple=True, min_e=1e-7): # returns state transition matrix (discrete-time), i.e. Phi = Exp(F dt)
     e = np.linalg.norm(w_h)
     if e < min_e: # to avoid numerical instabilities as we divide by e
         simple=True
@@ -112,9 +112,20 @@ def startracker_meas(q_t, q_h, sigma, rng, n):
     Z_n = rng.normal(0, sigma, n).reshape(-1,1) # noise on each axis
     q_m = q_t.reshape(-1,1) + 0.5 * Xi(q_t) @ Z_n # small angle approximation of q_m = q_n ⊗ q_t
     q_m = q_m.flatten()
-    dq_m = quat_mul(q_m, quat_inv(q_h))
-    dZ_m = 2 * dq_m[:3] / dq_m[3]
+    dq_m = quat_mul(q_m / np.linalg.norm(q_m), quat_inv(q_h))
+    dZ_m = quat_to_rotvec(dq_m)
     return dZ_m
 
 def quat_inv(q):
     return np.array([-q[0], -q[1], -q[2], q[3]])
+
+def quat_to_rotvec(q, eps=1e-12):
+    # Map unit quaternion to rotation vector using exact formula
+    q = q / np.linalg.norm(q)
+    v = q[:3]
+    w = q[3]
+    v_norm = np.linalg.norm(v)
+    if v_norm < eps:
+        return np.zeros(3)
+    angle = 2.0 * np.arctan2(v_norm, w)
+    return v * (angle / v_norm)
