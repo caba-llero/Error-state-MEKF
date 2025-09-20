@@ -12,14 +12,16 @@ _g: ground truth value of a variable (unknown to estimator)
 _0: initial value of a variable
 _m: measured variable (after adding noise)
 _l: logged variable, saved for analysis/plotting
+_d: difference / error between true and estimated value
+_n: noise
 
 dX: error of variable X, verifying X_t = X_h + dX
 
-Z: rotation vector - (3,1)
-q: attitude quaternion - (4,1)
-B: gyro bias - (3,1)
-w: angular velocity - (3,1)
-s: standard deviations of error state, i.e. diag(P)**0.5 - (6,1)
+Z: rotation vector - (3,)
+q: attitude quaternion - (4,)
+B: gyro bias - (3,)
+w: angular velocity - (3,)
+s: standard deviations of error state, i.e. diag(P)**0.5 - (6,)
 
 '''
 
@@ -67,7 +69,7 @@ def w_t_fun(t):
 ### Automatic initialization (not user input)
 H = np.hstack((I3, O3)) # H = [I_3 0_3x3]
 R = I3 * (sigma_startracker*arcsec_to_rad)**2 
-Q = u.Q(sigma_v, sigma_u, dt)
+Q_init = u.Q(sigma_v, sigma_u, dt, I3)
 
 times = np.arange(0, t_max, dt)
 
@@ -140,17 +142,17 @@ for i in range(1, len(times)):
             dt_g = dt
         # use instantaneous true rate at event time for simulated measurement
         w_t_meas = w_t_l[:, i] if i < w_t_l.shape[1] else w_t_l[:, -1]
-        w_m = w_t_meas + B_t + rng.normal(0, sigma_v/np.sqrt(dt_g), n)
+        w_m = w_t_meas + B_t + np.random.standard_normal(n) * (sigma_v/np.sqrt(dt_g))
         w_h = w_m - B_h
-        Phi = u.Phi(dt_g, w_h, simple_Phi)
-        Qk = u.Q(sigma_v, sigma_u, dt_g)
-        P = Phi @ P @ Phi.T + Qk
+        Phi = u.Phi(dt_g, w_h, I3, simple_Phi)
+        Qk = u.Q(sigma_v, sigma_u, dt_g, I3)
+        P = u.P_prop(P, Phi, Qk)
         q_h = u.quat_propagate(q_h, w_h, dt_g)   # propagate estimated attitude with gyro measurement
         last_gyro_i = i
 
     # update on star tracker event
     if i in idx_star:
-        dZ_m = u.startracker_meas(q_t, q_h, sigma_startracker*arcsec_to_rad, rng, n)
+        dZ_m = u.startracker_meas(q_t, q_h, sigma_startracker*arcsec_to_rad, n)
         K, K_Z, K_B = u.K(P, H, R)
         P = u.P_meas(K, H, P, R, Joseph)
         dB_h = K_B @ dZ_m
