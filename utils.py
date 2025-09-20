@@ -53,7 +53,9 @@ def K(P, H, R): # Kalman gain
     B = P @ H.T
     S = H @ B + R
     K = np.linalg.solve(S.T, B.T).T
-    return K
+    K_Z = K[:3, :] # Z part of the gain
+    K_B = K[3:, :] # B part of the gain
+    return K, K_Z, K_B
 
 @njit
 def P_meas(K, H, P, R, Joseph = True): # returns the update covariance matrix, after measurement
@@ -77,4 +79,23 @@ def measurement_indices(t_max, dt, measurement_freq): # returns the indices of t
     indices = indices[indices < n_steps]  # Filter out indices beyond array bounds
     return set(indices)  
 
+@njit
+def quat_mul(q1, q2):     # Quaternion product q1 ⊗ q2
+    x1,y1,z1,w1 = q1.flatten()
+    x2,y2,z2,w2 = q2.flatten()
+    x = w1*x2 + x1*w2 + y1*z2 - z1*y2
+    y = w1*y2 - x1*z2 + y1*w2 + z1*x2
+    z = w1*z2 + x1*y2 - y1*x2 + z1*w2
+    w = w1*w2 - x1*x2 - y1*y2 - z1*z2
+    return np.array([[x,y,z,w]]).T
 
+@njit
+def quat_propagate(q, w, dt): 
+    # propagates initial quaternion q thru angular vel w and delta time dt
+    # done with q <-- dq ⊗ q
+    dz = w*dt
+    p = np.linalg.norm(dz)
+    e = dz / p
+    dq = np.hstack(e * np.sin(p/2), np.cos(p/2))
+    q = quat_mul(dq, q)
+    return q

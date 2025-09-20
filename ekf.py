@@ -26,6 +26,7 @@ s: standard deviations of error state, i.e. diag(P)**0.5 - (6,1)
 ######### 
 # Constants
 I3 = np.eye(3)
+O3 = np.zeros((3,3))
 pi = np.pi
 arcsec_to_rad = pi / (180 * 3600)
 
@@ -40,19 +41,23 @@ sigma_u = 10**0.5 * 1e-10 # rate random walk coefficienct  [rad / s^(3/2)]
 freq_startracker = 2 # frequency of startracker measurements [Hz]
 freq_gyro = 100 # frequency of gyro measurements [Hz]
 
-# Estimated initial values
-q_h_0 = np.array([[0,0,0,1]]).T
-B_h_0 = np.array([[0,0,0]]).T
+rng_seed = 1
+
+Joseph = True # use Joseph formula to update the covariance matrix after startracker measurement. False = use simple form (perhaps more numerically unstable)
+
+# Define initial values for estimates
+q_h_0 = np.array([0,0,0,1])
+B_h_0 = np.array([0,0,0])
 Pq = (6 * arcsec_to_rad)**2 * I3 # initial attitude error vector covariance [rad^2]
 Pb = (0.2 * arcsec_to_rad)**2 * I3 # initial gyro bias error covariance [(rad/2)^2]
 
-dZ_h = np.array([[0,0,0]]).T
-dB_h = np.array([[0,0,0]]).T 
+dZ_h = np.array([0,0,0])
+dB_h = np.array([0,0,0])
 
 
-# True initial values
-B_t_0 = np.array([[0,0,0]]).T # start with no gyro bias
-q_t_0 = np.array([[0,0,0,1]]).T # initial attitude
+# Ground truth initial values
+B_t_0 = np.array([0,0,0]) # start with no gyro bias
+q_t_0 = np.array([0,0,0,1]) # initial attitude
 
 # Define true angular velocity
 def w_t_fun(t):
@@ -62,7 +67,7 @@ def w_t_fun(t):
     return np.hstack((w1, w2, w3))
 
 ### Automatic initialization (not user input)
-H = np.hstack((I3, np.zeros((3,3)))) # H = [I_3 0_3x3]
+H = np.hstack((I3, O3)) # H = [I_3 0_3x3]
 R = I3 * (sigma_startracker*arcsec_to_rad)**2 
 Q = u.Q(sigma_v, sigma_u, dt)
 
@@ -73,8 +78,10 @@ idx_star = u.measurement_indices(t_max, dt, freq_startracker)
 idx_all = idx_gyro | idx_star  # union of both sets
 timesteps = len(idx_all)  # log at every measurement event
 
-n = 6 # number of elements in state (3 for dZ, 3 for dB)
-w_t_l = w_t_fun(t)
+n = 3 # number of elements in state (3 for dZ, 3 for dB)
+w_t_l = w_t_fun(times) # ground truth angular velocity 
+w_t = w_t_l # for convenience and clarity
+rng = np.random.default_rng(seed=rng_seed)
 
 # Empty arrays for logging variables
 s_l = np.empty((6,timesteps))
@@ -84,13 +91,31 @@ B_h_l = np.empty((3,timesteps))
 q_t_l = np.empty((4,timesteps))
 B_t_l = np.empty((3,timesteps))
 
-for idx, t in enumerate(times):
-    # propagate ground truth
+# Set initial values
+q_t = q_t_0
+B_t = B_t_0
+B_h = B_h_0
+q_h = q_h_0
+P = np.block([[Pq, O3],[O3, Pb]])
 
-    if idx in idx_gyro: # propagate estimate
-        pass
+
+for idx in range(1, timesteps):
+    # propagate ground truth of quaternion and bias
+    q_t = u.quat_propagate(q_t, w_t[idx], dt)   
+    B_t = B_t + rng.normal(0, sigma_v*dt**0.5, n) 
+
+    if idx in idx_gyro: # propagate estimate of angular velocity and cov matrix
+        w_m = w_t + B_t + rng.normal(0, sigma_u, n) # angular velocity true measurement
+        w_h = w_m - B_h # angular velocity estimate
+        Phi = u.Phi(dt, w_h) # state transition matrix
+        P = Phi @ P @ P.T + Q
 
     if idx in idx_star: # update estimate
+        dZ_m = u.startracker_meas(q_t, R) # obtain startracker measurement in form of a error vector
+        K, K_Z, K_B = u.K(P, H, R)
+        P = u.P_meas(K, H, P, R, Joseph)
+        dB_h = K_Z @ dZ_m
+
         pass
     
     if idx in idx_all: # log measurement
