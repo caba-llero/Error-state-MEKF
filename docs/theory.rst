@@ -150,7 +150,7 @@ Quaternion math
 Throughout the documentation, we use the following quaternion multiplication convention. First we define the quaternion function :math:`\Xi`:
 
 .. math::
-    \Xi(\mathbf{q}) = \begin{bmatrix} q_w & -q_z & q_y \\ q_z & q_w & -q_x \\ -q_y & q_x & q_w \end{bmatrix}
+    \Xi(\mathbf{q}) = \begin{bmatrix} q_w & -q_z & q_y \\ q_z & q_w & -q_x \\ -q_y & q_x & q_w \\ -q_x & -q_y & -q_z \end{bmatrix}
 
 Then, the quaternion multiplication is defined as:
 
