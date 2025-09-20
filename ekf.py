@@ -36,14 +36,14 @@ degh_to_rads = pi / (180 * 3600)
 #########
 
 # Initialization
-t_max = 20*90 # maximum integration time [s]
+t_max = 500 # maximum integration time [s]
 dt = 0.01 # integration timestep, for ground truth computing [s]
 sigma_startracker = 6 # isotropic accuracy of startracker for each axis [arcsec]
 sigma_v = 10**0.5 * 1e-6 # gyro angle random walk factor  [rad/s / sqrt(Hz) = rad/sqrt(s)]
 sigma_u = 10**0.5 * 1e-9 # rate random walk coefficienct  [rad / s^(3/2)]
 freq_startracker = 1 # frequency of startracker measurements [Hz]
-freq_gyro = 10 # frequency of gyro measurements [Hz]
-init_inaccuracy = 10
+freq_gyro = 20 # frequency of gyro measurements [Hz]
+init_inaccuracy = 20
 rng_seed = 1
 
 Joseph = True # use Joseph formula to update the covariance matrix after startracker measurement. False = use simple form (perhaps more numerically unstable)
@@ -85,7 +85,7 @@ rng = np.random.default_rng(seed=rng_seed)
 # Initial estimate for the attitude is a very noisy measurement
 Z_n = rng.normal(0, sigma_startracker*arcsec_to_rad*init_inaccuracy, n).reshape(-1,1) # noise on each axis
 q_m_0 = q_t_0.reshape(-1,1) + 0.5 * u.Xi(q_t_0) @ Z_n # small angle approximation of q_m = q_n ⊗ q_t
-q_m_0 = q_m_0.flatten()
+q_m_0 = q_m_0.flatten() / np.linalg.norm(q_m_0)
 q_h_0 = q_m_0
 
 # Empty arrays for logging variables

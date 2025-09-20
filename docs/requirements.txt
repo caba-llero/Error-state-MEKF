@@ -3,4 +3,3 @@ sphinx-rtd-theme
 numpydoc
 nbsphinx
 ipython
-myst-parser
