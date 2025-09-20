@@ -174,18 +174,18 @@ The user inputs a desired ground truth angular velocity :math:`\boldsymbol{\omeg
 Define :math:`\varphi = \|\boldsymbol{\omega}_t\| \Delta t`. The quaternion increment associated with the rotation :math:`\boldsymbol{\omega}_t \Delta t` is:
 
 .. math::
-    :label: q_prop_1
+
    \Delta q = \begin{bmatrix} \mathbf{e} \sin(\frac{\varphi}{2}) \\ \cos(\frac{\varphi}{2}) \end{bmatrix}
 
 .. math::
-:label: q_prop_2
+
    \mathbf{e} = \frac{\boldsymbol{\omega}_t}{ \|\boldsymbol{\omega}_t\| }
 
 This assumes that the angular velocity is constant throughout this timestep. The ground truth update is:
 
 .. math::
-:label: q_prop_3
    q \leftarrow \Delta q \otimes q
+   
 
 
 In a discrete step, the bias is updated as:
@@ -221,7 +221,7 @@ The estimate of the angular velocity is:
    \boldsymbol{\hat{\omega}} = \boldsymbol{\omega}_m - \hat{\boldsymbol{\beta}}
 
 
-We propagate the estimated attitude quaternion the same way as the ground truth (see :eq:`q_prop_1`, :eq:`q_prop_2`, :eq:`q_prop_3`).
+We propagate the estimated attitude quaternion the same way as the ground truth (see the section above).
 
 The bias is constant in propagation:
 
@@ -244,7 +244,7 @@ Let :math:`\boldsymbol{\delta x} = \begin{bmatrix} \boldsymbol{\delta\theta} \\ 
 
    \Phi = \begin{bmatrix} \Phi_{11} & \Phi_{12} \\ 0 & I_3 \end{bmatrix}
 
-With :math:`\varphi = \|\boldsymbol{\hat{\omega}}\| \Delta t_g`, :math:`s = \sin \varphi`, :math:`c = \cos \varphi`,
+With :math:`\varphi = \|\boldsymbol{\hat{\omega}}\| \Delta t_g`, :math:`s = \sin \varphi`, :math:`c = \cos \varphi`, and \boldsymbol{\hat{\omega}}_\times is the skew-symmetric matrix of :math:`\boldsymbol{\hat{\omega}}`,
 
 .. math::
 
@@ -264,7 +264,7 @@ For :math:`\|\boldsymbol{\hat{\omega}}\| \Delta t_g \ll 1`, the approximation
 
    \Phi_{12} \approx -I_3 \Delta t_g
 
-is used.
+can be used (user toggleable).
 
 
 Process Noise Discretization
@@ -288,104 +288,95 @@ With gyro angle random walk density :math:`\sigma_v^2` and bias random walk dens
 
    Q_{22} = \sigma_u^2 \Delta t_g I_3
 
-Covariance propagation:
+Finally, covaraince is propagated as:
 
 .. math::
 
    P \leftarrow \Phi P \Phi^T + Q
 
 
-Measurement Model (Star Tracker Events)
----------------------------------------
+Star tracker measurement synthesis
+----------------------------------
 
-At star tracker instants, a quaternion measurement :math:`q_m` of attitude is available. The innovation quaternion is
+At star tracker measurement events, a quaternion measurement :math:`q_m` of attitude is available. This is synthesized from the ground truth quaternion :math:`q_t` with white noise. This is done by synthesizing a R3 vector with white noise and then converting it to a quaternion.
+
+.. math::
+    \boldsymbol{\theta}_n \sim \mathcal{N}(0, \sigma_{st}^2 I_3)
+
+.. math::
+    q_m = q_t \otimes \mathbf{q}_n \approx q_t + \frac{1}{2} \Xi(q_t) \boldsymbol{\theta}_n
+
+
+Here, we used small angle approximation (as the startracker measurement error is in the order of arcseconds), and we used the quaternion function :math:`\Xi` defined as:
+
+.. math::
+    \Xi(q) = \begin{bmatrix} q_w & -q_z & q_y \\ q_z & q_w & -q_x \\ -q_y & q_x & q_w \end{bmatrix}
+
+Now, the estimated error quaternion for this measurement is:
+
+.. math::
+    \delta q_m = q_m \otimes \hat{q}^{-1} 
+
+We then convert this to a rotation vector, explained in the first section. 
 
 .. math::
 
-   \delta q_m = q_m \otimes \hat{q}^{-1} = \begin{bmatrix} \boldsymbol{\epsilon}_m \\ \eta_m \end{bmatrix}
+    \boldsymbol{\delta q_m} \mapsto \boldsymbol{\delta\theta}_m
+
+The observation model matrix is:
 
 .. math::
 
-   \|\delta q_m\| = 1
+    H = \begin{bmatrix} I_3 & 0 \end{bmatrix}
 
-The corresponding rotation-vector innovation is
-
-.. math::
-
-   \mathbf{z}_k = \begin{cases} 0 & \|\boldsymbol{\epsilon}_m\| = 0 \\ 2 \arctan2 \left( \|\boldsymbol{\epsilon}_m\|, \eta_m \right) \frac{\boldsymbol{\epsilon}_m}{\|\boldsymbol{\epsilon}_m\|} & \text{otherwise} \end{cases}
-
-Under the small-angle assumption,
+The measurement noise covariance matrix is the startracker measurement accuracy (assumed isotropic):
 
 .. math::
 
-   \mathbf{z}_k = H \boldsymbol{\delta x}_k + \mathbf{n}_k
+    R = \sigma_{st}^2 I_3
 
-.. math::
-
-   H = \begin{bmatrix} I_3 & 0 \end{bmatrix}
-
-.. math::
-
-   \mathbf{n}_k \sim \mathcal{N}(0, R)
-
-.. math::
-
-   R = \sigma_{st}^2 I_3
+We discuss the measurement update and injection in the next section, carried out in star tracker measurement events.
 
 
-Measurement Update and Injection
+Measurement update and injection
 --------------------------------
 
 Compute the innovation covariance and gain, then the correction:
 
 .. math::
 
-   S_k = H P H^T + R
+   S \leftarrow H P H^T + R
 
 .. math::
 
-   K_k = P H^T S_k^{-1}
+   K \leftarrow P H^T S^{-1}
 
 .. math::
 
-   \boldsymbol{\delta \hat x}_k = K_k \mathbf{z}_k
+   \boldsymbol{\delta \hat x} \leftarrow K \boldsymbol{\delta\theta}_m
 
-Split :math:`\boldsymbol{\delta \hat x}_k = \begin{bmatrix} \hat{\boldsymbol{\delta\theta}} \\ \widehat{\delta\boldsymbol{\beta}} \end{bmatrix}` and inject into the nominal state:
+Split :math:`\boldsymbol{\delta \hat x} = \begin{bmatrix} \hat{\boldsymbol{\delta\theta}} \\ \hat{\boldsymbol{\delta\beta}} \end{bmatrix}` and inject into the global state:
 
 .. math::
 
    \hat{\boldsymbol{\beta}} \leftarrow \hat{\boldsymbol{\beta}} + \widehat{\delta\boldsymbol{\beta}}
 
-Let :math:`\alpha = \|\hat{\boldsymbol{\delta\theta}}\|` and :math:`\mathbf{e} = \hat{\boldsymbol{\delta\theta}} / \alpha` if :math:`\alpha > 0`. Define
+Map the estimated error vector to a quaternion:
 
 .. math::
 
-   d q_{\text{err}} = \begin{bmatrix} \mathbf{e} \sin(\frac{\alpha}{2}) \\ \cos(\frac{\alpha}{2}) \end{bmatrix}
-
-( or :math:`\begin{bmatrix} 0 \\ 1 \end{bmatrix}` if :math:`\alpha = 0` ),
+   \hat{\boldsymbol{\delta \theta}} \mapsto \hat{\boldsymbol{\delta q}}
 
 and update the attitude multiplicatively:
 
 .. math::
 
-   \hat{q} \leftarrow d q_{\text{err}} \otimes \hat{q}
+   \hat{q} \leftarrow \hat{\boldsymbol{\delta q}} \otimes \hat{q}
+
+
+Update the covariance (the Joseph form is used by default; a simple form is also available):
+
 
 .. math::
 
-   \hat{q} \leftarrow \frac{\hat{q}}{\|\hat{q}\|}
-
-Update the covariance (Joseph form):
-
-.. math::
-
-   I_{KH} = I_6 - K_k H
-
-.. math::
-
-   P \leftarrow I_{KH} P I_{KH}^T + K_k R K_k^T
-
-
-Timing of Updates
------------------
-
-Propagation occurs at gyro sampling instants :math:`\Delta t_g`. Measurement updates occur when a star tracker observation is available. Between observations, only propagation is performed.
+   P \leftarrow (I_6 - K H) P (I_6 - K H)^T + K R K^T
