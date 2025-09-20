@@ -16,7 +16,7 @@ def Phi(dt, w_h, simple=False): # returns state transition matrix (discrete-time
         Phi12 = -I3 * dt
     else:
         Phi11 = I3 - a/e * sp + a**2 / e**2 * (1-cp)
-        Phi12 = -I3 * dt - a**2 / e**3 (p - sp) + a/e**2 * (1 - cp)
+        Phi12 = -I3 * dt - a**2 / e**3 * (p - sp) + a/e**2 * (1 - cp)
 
     Phi21 = np.zeros((3,3))
     Phi22 = np.eye(3)
@@ -70,6 +70,11 @@ def P_prop(P, Phi, Q): # returns the update of the covariance matrix, after prop
     return Phi @ P @ Phi.T + Q
 
 
-
+def measurement_indices(t_max, dt, measurement_freq): # returns the indices of t at which we trigger a measurement event
+    n_steps = int(t_max / dt)
+    expected_times = np.arange(0, t_max, 1/measurement_freq)
+    indices = np.ceil(expected_times / dt).astype(int)  # Convert expected times to indices (round up to ensure >= condition)
+    indices = indices[indices < n_steps]  # Filter out indices beyond array bounds
+    return set(indices)  
 
 
