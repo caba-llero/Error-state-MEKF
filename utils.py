@@ -3,7 +3,7 @@ from numba import njit
 
 I3 = np.eye(3)
 
-def Phi(dt, w_h, simple=True, min_e=1e-7): # returns state transition matrix (discrete-time), i.e. Phi = Exp(F dt)
+def Phi(dt, w_h, simple=False, min_e=1e-7): # returns state transition matrix (discrete-time), i.e. Phi = Exp(F dt)
     e = np.linalg.norm(w_h)
     if e < min_e: # to avoid numerical instabilities as we divide by e
         simple=True
