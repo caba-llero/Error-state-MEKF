@@ -15,13 +15,14 @@ def read_requirements(filename):
 setup(
     name="error-state-mekf",
     version="0.1.0",
-    author="Your Name",
-    author_email="your.email@example.com",
+    author="Manel Caballero-Pérez",
+    author_email="cab@lle.ro",
     description="Error state multiplicative extended Kalman filter for spacecraft attitude and gyro bias estimation",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/error-state-mekf",
+    url="https://github.com/caba-llero/error-state-mekf",
     packages=find_packages(),
+    py_modules=["mekf", "ekf", "utils"],
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Science/Research",

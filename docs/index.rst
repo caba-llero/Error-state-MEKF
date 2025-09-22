@@ -10,7 +10,6 @@ This package implements an error state multiplicative extended Kalman filter (ME
    installation
    usage
    api_reference
-   examples
    theory
 
 Indices and tables

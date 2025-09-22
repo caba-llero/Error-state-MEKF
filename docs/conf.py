@@ -18,8 +18,8 @@ sys.path.insert(0, os.path.abspath('..'))
 # -- Project information -----------------------------------------------------
 
 project = 'Error State MEKF'
-copyright = '2025, Your Name'
-author = 'Your Name'
+copyright = '2025, Manel Caballero-Pérez'
+author = 'Manel Caballero-Pérez'
 
 # The full version, including alpha/beta/rc tags
 release = '0.1.0'

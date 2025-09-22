@@ -36,14 +36,14 @@ degh_to_rads = pi / (180 * 3600)
 #########
 
 # Initialization
-t_max = 500 # maximum integration time [s]
+t_max = 1000 # maximum integration time [s]
 dt = 0.01 # integration timestep, for ground truth computing [s]
 sigma_startracker = 6 # isotropic accuracy of startracker for each axis [arcsec]
 sigma_v = 10**0.5 * 1e-6 # gyro angle random walk factor  [rad/s / sqrt(Hz) = rad/sqrt(s)]
 sigma_u = 10**0.5 * 1e-9 # rate random walk coefficienct  [rad / s^(3/2)]
 freq_startracker = 1 # frequency of startracker measurements [Hz]
 freq_gyro = 20 # frequency of gyro measurements [Hz]
-init_inaccuracy = 20
+init_inaccuracy = 30
 rng_seed = 1
 
 Joseph = True # use Joseph formula to update the covariance matrix after startracker measurement. False = use simple form (perhaps more numerically unstable)
@@ -51,7 +51,7 @@ simple_Phi = False # use the simplified state transition matrix (small angle)
 
 # Define initial values for estimates
 B_h_0 =  np.array([0,0,0]) 
-Pq = (6 * arcsec_to_rad)**2 * I3 # initial attitude error vector covariance [rad^2]
+Pq = (init_inaccuracy * arcsec_to_rad)**2 * I3 # initial attitude error vector covariance [rad^2]
 Pb = (0.2 * degh_to_rads)**2 * I3 # initial gyro bias error covariance [(rad/s)^2]
 
 
@@ -195,6 +195,36 @@ plt.title("Total Pointing Error")
 plt.ylabel("Error (rad)")
 plt.xlabel("Time (s)")
 plt.grid(True)
+
+# Plot bias and estimated bias
+plt.figure(figsize=(10, 6))
+plt.plot(t_l, B_t_l[0, :])
+plt.plot(t_l, B_h_l[0, :])
+plt.title("Bias and Estimated Bias")
+plt.ylabel("Bias (rad/s)")
+plt.xlabel("Time (s)")
+plt.grid(True)
+
+# Plot attitude and estimated attitude
+fig, axs = plt.subplots(2, 2, figsize=(18, 10), sharex=True)
+axs[0, 0].plot(t_l, q_t_l[0, :])
+axs[0, 0].plot(t_l, q_h_l[0, :])
+axs[0, 1].plot(t_l, q_t_l[1, :])
+axs[0, 1].plot(t_l, q_h_l[1, :])
+axs[1, 0].plot(t_l, q_t_l[2, :])
+axs[1, 0].plot(t_l, q_h_l[2, :])
+axs[1, 1].plot(t_l, q_t_l[3, :])
+axs[1, 1].plot(t_l, q_h_l[3, :])
+axs[0, 0].set_title("X-component")
+axs[0, 1].set_title("Y-component")
+axs[1, 0].set_title("Z-component")
+axs[1, 1].set_title("W-component")
+for i in range(2):
+    for j in range(2):
+        axs[i, j].set_ylabel("Attitude (rad)")
+        axs[i, j].legend(loc='upper right')
+        axs[i, j].set_xlabel("Time (s)")
+        axs[i, j].grid(True)
 
 # Create plots for error components with 3-sigma bounds
 fig, axs = plt.subplots(2, 3, figsize=(18, 10), sharex=True)

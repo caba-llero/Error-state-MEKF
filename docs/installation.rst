@@ -1,31 +1,17 @@
 Installation
 ============
 
-Requirements
-------------
+Barebones Installation
+----------------------
 
-This package requires Python 3.8 or higher and the following dependencies:
+Requires Python 3.8+.
 
-* numpy>=1.20.0
-* matplotlib>=3.0.0
-* numba>=0.50.0
+Install directly from GitHub::
 
-Installation from source
-------------------------
+    pip install git+https://github.com/caba-llero/error-state-mekf.git
 
-Clone the repository::
+Or clone and install locally::
 
-    git clone https://github.com/yourusername/error-state-mekf.git
+    git clone https://github.com/caba-llero/error-state-mekf.git
     cd error-state-mekf
-
-Install the package::
-
     pip install -e .
-
-For development installation with additional dependencies::
-
-    pip install -e ".[dev]"
-
-Installation for documentation building::
-
-    pip install -e ".[docs]"
