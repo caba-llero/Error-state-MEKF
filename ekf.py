@@ -25,6 +25,8 @@ s: standard deviations of error state, i.e. diag(P)**0.5 - (6,)
 
 '''
 
+### DEPRECATED -- legacy code. mekf.py is a class wrapped based on this
+
 ######### 
 # Constants
 I3 = np.eye(3)

@@ -94,10 +94,10 @@ class MEKF:
 
         n = 3
         w_t_l = self.w_t_fun(times)
-        rng = np.random.default_rng(seed=self.rng_seed)
+        np.random.seed(self.rng_seed)
 
         # Initial attitude estimate from a noisy measurement
-        Z_n = rng.normal(
+        Z_n = np.random.normal(
             0, self.sigma_startracker * arcsec_to_rad * self.init_inaccuracy, n
         ).reshape(-1, 1)
         q_m_0 = self.q_t_0.reshape(-1, 1) + 0.5 * u.Xi(self.q_t_0) @ Z_n
@@ -117,7 +117,7 @@ class MEKF:
         # Initial states
         q_t = self.q_t_0.copy()
         B_t = self.B_t_0.copy()
-        B_h = self.B_h_0.reshape(-1, 1).copy()
+        B_h = self.B_h_0.copy()
         q_h = q_h_0.copy()
         q_d = u.quat_mul(q_t, u.quat_inv(q_h))
         Z_d = u.quat_to_rotvec(q_d)
@@ -142,7 +142,7 @@ class MEKF:
             # Propagate ground truth
             w_t = w_t_l[:, i - 1]
             q_t = u.quat_propagate(q_t, w_t, self.dt)
-            B_t = B_t + rng.normal(0, self.sigma_u * self.dt**0.5, n)
+            B_t = B_t + np.random.normal(0, self.sigma_u * self.dt**0.5, n)
 
             # Prediction on gyro event
             if i in idx_gyro:
@@ -153,7 +153,7 @@ class MEKF:
                 w_m = w_t_meas + B_t + np.random.standard_normal(n) * (
                     self.sigma_v / np.sqrt(dt_g)
                 )
-                w_h = w_m - B_h.flatten()
+                w_h = w_m - B_h
                 Phi = u.Phi(dt_g, w_h, I3, self.simple_Phi)
                 Qk = u.Q(self.sigma_v, self.sigma_u, dt_g, I3)
                 P = u.P_prop(P, Phi, Qk)
@@ -221,7 +221,7 @@ class MEKF:
         r = self._require_results()
         plt.figure(figsize=(10, 6))
         plt.plot(r["t"], r["G"]) 
-        plt.title("Total Pointing Error")
+        plt.title("Total pointing error")
         plt.ylabel("Error (rad)")
         plt.xlabel("Time (s)")
         plt.grid(True)
@@ -263,26 +263,26 @@ class MEKF:
         r = self._require_results()
         fig, axs = plt.subplots(2, 3, figsize=(18, 10), sharex=True)
         fig.suptitle(
-            "Attitude and Gyro Bias Estimation Errors with 3-Sigma Bounds",
+            "Attitude and gyro bias estimation errors with 3-sigma bounds",
             fontsize=16,
         )
-
+        component = ["X", "Y", "Z"]
         for i in range(3):
             ax = axs[0, i]
             ax.plot(r["t"], r["Z_d"][i, :], "b", label=f"Error Axis {i+1}")
             ax.plot(r["t"], 3 * r["s"][i, :], "r--", label="3-sigma")
             ax.plot(r["t"], -3 * r["s"][i, :], "r--")
-            ax.set_title(f"Attitude Error (Z_d) - Component {i+1}")
+            ax.set_title(f"Attitude error - Component {component[i]}")
             ax.set_ylabel("Error (rad)")
             ax.grid(True)
             ax.legend()
-
+        
         for i in range(3):
             ax = axs[1, i]
             ax.plot(r["t"], r["B_d"][i, :], "b", label=f"Error Axis {i+1}")
             ax.plot(r["t"], 3 * r["s"][i + 3, :], "r--", label="3-sigma")
             ax.plot(r["t"], -3 * r["s"][i + 3, :], "r--")
-            ax.set_title(f"Gyro Bias Error (B_d) - Component {i+1}")
+            ax.set_title(f"Gyro bias error - Component {component[i]}")
             ax.set_ylabel("Error (rad/s)")
             ax.grid(True)
             ax.legend()
@@ -298,4 +298,7 @@ class MEKF:
         self.plot_errors_with_bounds()
         plt.show()
 
-
+if __name__ == "__main__":
+    mekf = MEKF()
+    mekf.calculate()
+    mekf.plot_all()
