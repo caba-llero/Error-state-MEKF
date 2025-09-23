@@ -10,7 +10,7 @@ We assume that the sensors available are a startracker and gyros on each axis. T
 
 The full documentation and theory behind the algorithm can be found in https://error-state-mekf.readthedocs.io/en/latest/theory.html
 
-This algorithm is used in Pytellite.org -- see https://github.com/caba-llero/pytellite for more info.
+This algorithm is used in [Pytellite.org](https://pytellite.org) to simulate the attitude estimation in a satellite (software-in-the-loop style). Check out https://github.com/caba-llero/pytellite for more info.
 
 Installation
 ------------
