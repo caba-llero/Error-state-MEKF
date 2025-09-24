@@ -12,6 +12,8 @@ The full documentation and theory behind the algorithm can be found in https://e
 
 This algorithm is used in [Pytellite.org](https://pytellite.org) to simulate the attitude estimation in a satellite (software-in-the-loop style). Check out https://github.com/caba-llero/pytellite for more info.
 
+![MEKF example plot](/mekf_example.png)
+
 Installation
 ------------
 
